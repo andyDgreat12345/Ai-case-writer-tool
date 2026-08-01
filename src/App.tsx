@@ -13,6 +13,8 @@ import {
 } from './lib/caseDoc'
 import { loadAll, upsert, remove } from './lib/storage'
 import { toMarkdown, download } from './lib/export'
+import { TONES, DEFAULT_TONE, type ToneId } from './lib/tone'
+import Coach from './components/Coach'
 
 export default function App() {
   const [docs, setDocs] = useState<CaseDoc[]>([])
@@ -83,6 +85,12 @@ export default function App() {
   const seconds = estimateSeconds(words)
   const target = current?.settings.targetWordCount ?? 750
   const overTarget = words > target
+  const tone = (current?.settings.tone as ToneId) ?? DEFAULT_TONE
+
+  function setTone(t: ToneId) {
+    if (!current) return
+    update({ settings: { ...current.settings, tone: t } })
+  }
 
   return (
     <div className="app">
@@ -141,6 +149,16 @@ export default function App() {
                 onChange={(e) => update({ title: e.target.value })}
               />
               <div className="topbar-right">
+                <label className="tone-select" title="Tone used by the AI coach">
+                  Tone:
+                  <select value={tone} onChange={(e) => setTone(e.target.value as ToneId)}>
+                    {TONES.map((t) => (
+                      <option key={t.id} value={t.id} title={t.hint}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <span className={`counter ${overTarget ? 'over' : ''}`}>
                   {words} words · ~{formatDuration(seconds)}
                   <span className="counter-sub"> / target {target}</span>
@@ -198,6 +216,15 @@ export default function App() {
                   value={current.framework}
                   placeholder="We value... The standard is..."
                   onChange={(e) => update({ framework: e.target.value })}
+                />
+                <Coach
+                  actions={['wording', 'rewrite']}
+                  section="framework / weighing standard"
+                  text={current.framework}
+                  tone={tone}
+                  resolution={current.resolution}
+                  side={current.side}
+                  onApply={(t) => update({ framework: t })}
                 />
               </section>
 
@@ -314,6 +341,15 @@ export default function App() {
                       }
                     />
                   </label>
+                  <Coach
+                    actions={['wording', 'argument', 'rewrite']}
+                    section="warrant (reasoning that proves the claim)"
+                    text={c.warrant}
+                    tone={tone}
+                    resolution={current.resolution}
+                    side={current.side}
+                    onApply={(t) => updateContention(c.id, { warrant: t })}
+                  />
 
                   <div className="field">
                     <div className="card-head">
@@ -376,6 +412,15 @@ export default function App() {
                       }
                     />
                   </label>
+                  <Coach
+                    actions={['wording', 'argument', 'rewrite']}
+                    section="impact (why it matters and how it weighs)"
+                    text={c.impact}
+                    tone={tone}
+                    resolution={current.resolution}
+                    side={current.side}
+                    onApply={(t) => updateContention(c.id, { impact: t })}
+                  />
                 </section>
               ))}
 
@@ -391,9 +436,9 @@ export default function App() {
               </button>
 
               <p className="footnote">
-                CaseForge gives feedback on work you write. Check your
-                league/tournament rules on AI assistance, and verify every
-                source you cite. AI coaching arrives in the next version.
+                CaseForge gives feedback on work you write — it never writes your
+                case or invents sources. Check your league/tournament rules on AI
+                assistance, and verify every source you cite.
               </p>
             </div>
           </>

@@ -33,7 +33,7 @@ export interface CaseDoc {
   framework: string
   definitions: Definition[]
   contentions: Contention[]
-  settings: { targetWordCount: number }
+  settings: { targetWordCount: number; tone?: string }
 }
 
 export function newId(): string {
@@ -56,7 +56,7 @@ export function newCase(): CaseDoc {
     framework: '',
     definitions: [],
     contentions: [newContention()],
-    settings: { targetWordCount: 750 },
+    settings: { targetWordCount: 750, tone: 'analytical' },
   }
 }
 

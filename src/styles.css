@@ -127,6 +127,40 @@ textarea:focus, input:focus, select:focus { border-color: var(--accent); }
 
 .footnote { color: var(--muted); font-size: 12px; text-align: center; margin: 8px 0 32px; }
 
+/* Tone selector */
+.tone-select { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.tone-select select { width: auto; padding: 5px 8px; font-size: 13px; }
+
+/* Coach */
+.coach { margin-top: 8px; }
+.coach-bar { display: flex; flex-wrap: wrap; gap: 6px; }
+.btn.small.ghost { color: var(--accent); }
+.btn.small.ghost:disabled { color: var(--muted); opacity: 0.5; cursor: not-allowed; border-color: var(--border); }
+.btn.small.ghost.dim { color: var(--muted); }
+.coach-note { font-size: 13px; color: var(--muted); margin-top: 8px; }
+.coach-note.err { color: var(--over); }
+.coach-result { margin-top: 10px; display: grid; gap: 8px; }
+.coach-summary { font-size: 13px; color: var(--text); margin: 0; }
+
+.sugg { background: var(--panel-2); border: 1px solid var(--border); border-left-width: 3px; border-radius: 8px; padding: 10px 12px; }
+.sugg.sev-low { border-left-color: #4a9; }
+.sugg.sev-medium { border-left-color: var(--over); }
+.sugg.sev-high { border-left-color: var(--danger); }
+.sugg-top { display: flex; align-items: center; gap: 8px; }
+.sugg-issue { font-weight: 600; font-size: 13px; }
+.sugg-span { font-size: 13px; color: var(--muted); font-style: italic; margin: 6px 0; }
+.sugg-fix { font-size: 13px; margin-bottom: 6px; }
+.sugg-rewrite, .rewrite-opt {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+  background: var(--panel); border: 1px dashed var(--border); border-radius: 6px;
+  padding: 8px 10px; font-size: 13px;
+}
+.sugg-rewrite span, .rewrite-opt span { flex: 1; }
+.sev-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+.sev-high .sev-dot { background: var(--danger); }
+.sev-medium .sev-dot { background: var(--over); }
+.sev-low .sev-dot { background: #4a9; }
+
 @media (max-width: 720px) {
   .sidebar { display: none; }
   .row { flex-direction: column; }

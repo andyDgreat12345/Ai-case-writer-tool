@@ -41,15 +41,16 @@ Goal: a debater can write, format, save, and export a full PF constructive with
 Goal: targeted, topic-aware feedback per section/selection. See
 [AI_FEEDBACK_DESIGN.md](AI_FEEDBACK_DESIGN.md).
 
-- [ ] `/api/feedback` with the model-agnostic adapter + rate limiting.
-- [ ] **Writing & wording feedback** (clarity, grammar, flow, filler).
-- [ ] Feedback panel UI: per-section "Get feedback", inline suggestions,
+- [x] `/api/feedback` with the model-agnostic adapter + rate limiting.
+- [x] **Writing & wording feedback** (clarity, grammar, flow, filler).
+- [x] Feedback panel UI: per-section "Get feedback", inline suggestions,
       accept/dismiss.
-- [ ] `/api/rewrite` — **persuasion & authenticity** rewrite of a selection.
-- [ ] **Tone selector** (see tone system) applied to feedback + rewrite.
-- [ ] **Argument feedback** (warrant strength, links, impact logic, evidence
+- [x] `/api/rewrite` — **persuasion & authenticity** rewrite of a selection.
+- [x] **Tone selector** (see tone system) applied to feedback + rewrite.
+- [x] **Argument feedback** (warrant strength, links, impact logic, evidence
       gaps), topic-tuned.
-- [ ] Input caps, output guards, spend alert configured.
+- [x] Input caps + output guards in code. *(Spend alert is a dashboard step —
+      set it on the AI provider account before turning the key on.)*
 
 **Done when:** each section can be reviewed and improved with the AI, safely and
 within a predictable budget.
