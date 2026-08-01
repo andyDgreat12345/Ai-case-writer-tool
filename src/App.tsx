@@ -1,0 +1,449 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  type CaseDoc,
+  type Contention,
+  type Evidence,
+  type Side,
+  newCase,
+  newContention,
+  speakableText,
+  wordCount,
+  estimateSeconds,
+  formatDuration,
+} from './lib/caseDoc'
+import { loadAll, upsert, remove } from './lib/storage'
+import { toMarkdown, download } from './lib/export'
+import { TONES, DEFAULT_TONE, type ToneId } from './lib/tone'
+import Coach from './components/Coach'
+
+export default function App() {
+  const [docs, setDocs] = useState<CaseDoc[]>([])
+  const [currentId, setCurrentId] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
+  const timer = useRef<number | null>(null)
+
+  useEffect(() => {
+    const all = loadAll()
+    if (all.length === 0) {
+      const first = newCase()
+      setDocs(upsert(first))
+      setCurrentId(first.id)
+    } else {
+      setDocs(all)
+      setCurrentId(all[0].id)
+    }
+  }, [])
+
+  const current = useMemo(
+    () => docs.find((d) => d.id === currentId) ?? null,
+    [docs, currentId],
+  )
+
+  // Optimistic in-memory update + debounced persist to localStorage.
+  function update(patch: Partial<CaseDoc>) {
+    if (!current) return
+    const next = { ...current, ...patch }
+    setDocs((prev) => prev.map((d) => (d.id === next.id ? next : d)))
+    if (timer.current) window.clearTimeout(timer.current)
+    timer.current = window.setTimeout(() => {
+      setDocs(upsert(next))
+      setSavedAt(new Date().toLocaleTimeString())
+    }, 600)
+  }
+
+  function updateContention(id: string, patch: Partial<Contention>) {
+    if (!current) return
+    update({
+      contentions: current.contentions.map((c) =>
+        c.id === id ? { ...c, ...patch } : c,
+      ),
+    })
+  }
+
+  function updateEvidence(cid: string, idx: number, patch: Partial<Evidence>) {
+    const c = current?.contentions.find((x) => x.id === cid)
+    if (!c) return
+    updateContention(cid, {
+      evidence: c.evidence.map((e, i) => (i === idx ? { ...e, ...patch } : e)),
+    })
+  }
+
+  function createDoc() {
+    const doc = newCase()
+    setDocs(upsert(doc))
+    setCurrentId(doc.id)
+  }
+
+  function deleteDoc(id: string) {
+    if (!confirm('Delete this case? This cannot be undone.')) return
+    const remaining = remove(id)
+    setDocs(remaining)
+    if (currentId === id) setCurrentId(remaining[0]?.id ?? null)
+  }
+
+  const words = current ? wordCount(speakableText(current)) : 0
+  const seconds = estimateSeconds(words)
+  const target = current?.settings.targetWordCount ?? 750
+  const overTarget = words > target
+  const tone = (current?.settings.tone as ToneId) ?? DEFAULT_TONE
+
+  function setTone(t: ToneId) {
+    if (!current) return
+    update({ settings: { ...current.settings, tone: t } })
+  }
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <div className="brand">
+          <span className="logo">◆</span> CaseForge
+        </div>
+        <button className="btn primary block" onClick={createDoc}>
+          + New case
+        </button>
+        <div className="doc-list">
+          {docs.map((d) => (
+            <div
+              key={d.id}
+              className={`doc-item ${d.id === currentId ? 'active' : ''}`}
+              onClick={() => setCurrentId(d.id)}
+            >
+              <div className="doc-title">{d.title || 'Untitled case'}</div>
+              <div className="doc-meta">
+                {d.side} · {d.contentions.length} contention
+                {d.contentions.length === 1 ? '' : 's'}
+              </div>
+              <button
+                className="doc-del"
+                title="Delete"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  deleteDoc(d.id)
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="sidebar-foot">
+          PF constructive coach · v0.1 · work saved in your browser
+        </div>
+      </aside>
+
+      <main className="main">
+        {!current ? (
+          <div className="empty">
+            <p>No case selected.</p>
+            <button className="btn primary" onClick={createDoc}>
+              Create your first case
+            </button>
+          </div>
+        ) : (
+          <>
+            <header className="topbar">
+              <input
+                className="title-input"
+                value={current.title}
+                placeholder="Case title"
+                onChange={(e) => update({ title: e.target.value })}
+              />
+              <div className="topbar-right">
+                <label className="tone-select" title="Tone used by the AI coach">
+                  Tone:
+                  <select value={tone} onChange={(e) => setTone(e.target.value as ToneId)}>
+                    {TONES.map((t) => (
+                      <option key={t.id} value={t.id} title={t.hint}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <span className={`counter ${overTarget ? 'over' : ''}`}>
+                  {words} words · ~{formatDuration(seconds)}
+                  <span className="counter-sub"> / target {target}</span>
+                </span>
+                <button
+                  className="btn"
+                  onClick={() =>
+                    download(
+                      `${(current.title || 'case').replace(/\s+/g, '-')}.md`,
+                      toMarkdown(current),
+                    )
+                  }
+                >
+                  Export .md
+                </button>
+                <span className="saved">
+                  {savedAt ? `Saved ${savedAt}` : 'Autosaves'}
+                </span>
+              </div>
+            </header>
+
+            <div className="editor">
+              <section className="card">
+                <div className="row">
+                  <label className="field grow">
+                    <span className="label">Resolution / topic</span>
+                    <textarea
+                      rows={2}
+                      value={current.resolution}
+                      placeholder="Resolved: ..."
+                      onChange={(e) => update({ resolution: e.target.value })}
+                    />
+                  </label>
+                  <label className="field">
+                    <span className="label">Side</span>
+                    <select
+                      value={current.side}
+                      onChange={(e) => update({ side: e.target.value as Side })}
+                    >
+                      <option value="PRO">PRO</option>
+                      <option value="CON">CON</option>
+                    </select>
+                  </label>
+                </div>
+              </section>
+
+              <section className="card">
+                <h2>Framework</h2>
+                <p className="hint">
+                  Your weighing mechanism / standard — how the judge should
+                  evaluate the round.
+                </p>
+                <textarea
+                  rows={3}
+                  value={current.framework}
+                  placeholder="We value... The standard is..."
+                  onChange={(e) => update({ framework: e.target.value })}
+                />
+                <Coach
+                  actions={['wording', 'rewrite']}
+                  section="framework / weighing standard"
+                  text={current.framework}
+                  tone={tone}
+                  resolution={current.resolution}
+                  side={current.side}
+                  onApply={(t) => update({ framework: t })}
+                />
+              </section>
+
+              <section className="card">
+                <div className="card-head">
+                  <h2>Definitions</h2>
+                  <button
+                    className="btn small"
+                    onClick={() =>
+                      update({
+                        definitions: [
+                          ...current.definitions,
+                          { term: '', definition: '' },
+                        ],
+                      })
+                    }
+                  >
+                    + Add
+                  </button>
+                </div>
+                {current.definitions.length === 0 && (
+                  <p className="hint">No definitions yet.</p>
+                )}
+                {current.definitions.map((d, i) => (
+                  <div className="row def-row" key={i}>
+                    <input
+                      className="field-sm"
+                      placeholder="Term"
+                      value={d.term}
+                      onChange={(e) =>
+                        update({
+                          definitions: current.definitions.map((x, j) =>
+                            j === i ? { ...x, term: e.target.value } : x,
+                          ),
+                        })
+                      }
+                    />
+                    <input
+                      className="field-sm grow"
+                      placeholder="Definition (+ source)"
+                      value={d.definition}
+                      onChange={(e) =>
+                        update({
+                          definitions: current.definitions.map((x, j) =>
+                            j === i ? { ...x, definition: e.target.value } : x,
+                          ),
+                        })
+                      }
+                    />
+                    <button
+                      className="btn small ghost"
+                      onClick={() =>
+                        update({
+                          definitions: current.definitions.filter(
+                            (_, j) => j !== i,
+                          ),
+                        })
+                      }
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </section>
+
+              {current.contentions.map((c, ci) => (
+                <section className="card contention" key={c.id}>
+                  <div className="card-head">
+                    <h2>Contention {ci + 1}</h2>
+                    {current.contentions.length > 1 && (
+                      <button
+                        className="btn small ghost"
+                        onClick={() =>
+                          update({
+                            contentions: current.contentions.filter(
+                              (x) => x.id !== c.id,
+                            ),
+                          })
+                        }
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                  <input
+                    className="field-sm"
+                    placeholder="Contention title"
+                    value={c.title}
+                    onChange={(e) =>
+                      updateContention(c.id, { title: e.target.value })
+                    }
+                  />
+
+                  <label className="field">
+                    <span className="label">Claim</span>
+                    <textarea
+                      rows={2}
+                      placeholder="What you are arguing."
+                      value={c.claim}
+                      onChange={(e) =>
+                        updateContention(c.id, { claim: e.target.value })
+                      }
+                    />
+                  </label>
+
+                  <label className="field">
+                    <span className="label">Warrant</span>
+                    <textarea
+                      rows={3}
+                      placeholder="Why the claim is true — the reasoning."
+                      value={c.warrant}
+                      onChange={(e) =>
+                        updateContention(c.id, { warrant: e.target.value })
+                      }
+                    />
+                  </label>
+                  <Coach
+                    actions={['wording', 'argument', 'rewrite']}
+                    section="warrant (reasoning that proves the claim)"
+                    text={c.warrant}
+                    tone={tone}
+                    resolution={current.resolution}
+                    side={current.side}
+                    onApply={(t) => updateContention(c.id, { warrant: t })}
+                  />
+
+                  <div className="field">
+                    <div className="card-head">
+                      <span className="label">Evidence</span>
+                      <button
+                        className="btn small"
+                        onClick={() =>
+                          updateContention(c.id, {
+                            evidence: [...c.evidence, { text: '', citation: '' }],
+                          })
+                        }
+                      >
+                        + Add
+                      </button>
+                    </div>
+                    {c.evidence.map((e, ei) => (
+                      <div className="ev-row" key={ei}>
+                        <textarea
+                          rows={2}
+                          placeholder="Card / stat / quote"
+                          value={e.text}
+                          onChange={(ev) =>
+                            updateEvidence(c.id, ei, { text: ev.target.value })
+                          }
+                        />
+                        <div className="row">
+                          <input
+                            className="field-sm grow"
+                            placeholder="Citation (author, date, outlet)"
+                            value={e.citation}
+                            onChange={(ev) =>
+                              updateEvidence(c.id, ei, {
+                                citation: ev.target.value,
+                              })
+                            }
+                          />
+                          <button
+                            className="btn small ghost"
+                            onClick={() =>
+                              updateContention(c.id, {
+                                evidence: c.evidence.filter((_, j) => j !== ei),
+                              })
+                            }
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <label className="field">
+                    <span className="label">Impact</span>
+                    <textarea
+                      rows={2}
+                      placeholder="Why it matters + how it weighs."
+                      value={c.impact}
+                      onChange={(e) =>
+                        updateContention(c.id, { impact: e.target.value })
+                      }
+                    />
+                  </label>
+                  <Coach
+                    actions={['wording', 'argument', 'rewrite']}
+                    section="impact (why it matters and how it weighs)"
+                    text={c.impact}
+                    tone={tone}
+                    resolution={current.resolution}
+                    side={current.side}
+                    onApply={(t) => updateContention(c.id, { impact: t })}
+                  />
+                </section>
+              ))}
+
+              <button
+                className="btn block dashed"
+                onClick={() =>
+                  update({
+                    contentions: [...current.contentions, newContention()],
+                  })
+                }
+              >
+                + Add contention
+              </button>
+
+              <p className="footnote">
+                CaseForge gives feedback on work you write — it never writes your
+                case or invents sources. Check your league/tournament rules on AI
+                assistance, and verify every source you cite.
+              </p>
+            </div>
+          </>
+        )}
+      </main>
+    </div>
+  )
+}
