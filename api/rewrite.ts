@@ -5,6 +5,7 @@
 import { complete, aiConfigured } from './_lib/ai'
 import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit'
 import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts'
+import { parseLooseJson } from './_lib/json'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -50,7 +51,7 @@ export default async function handler(req: any, res: any) {
 
     let parsed: any
     try {
-      parsed = JSON.parse(raw)
+      parsed = parseLooseJson(raw)
     } catch {
       return res.status(502).json({ error: 'The coach returned an unreadable response. Try again.' })
     }

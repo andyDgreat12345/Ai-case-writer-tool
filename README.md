@@ -71,4 +71,16 @@ Full details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Status
 
-Planning + scaffolding. See the roadmap for the current milestone.
+**Live:** https://ai-case-writer-tool.vercel.app
+
+The editor is complete and in production — writing, formatting, word/speech-time
+estimates, export (Markdown, plain text, printable speech view), and backup /
+restore all work with no AI and no account.
+
+The AI coach is built and deployed but **dormant until a provider key is set**.
+To activate it, add `AI_API_KEY`, `AI_BASE_URL`, and `AI_MODEL` as environment
+variables (Production scope) in the host dashboard and redeploy. `/api/health`
+reports `aiConfigured: true` once they are live. Any OpenAI-compatible provider
+works — DeepSeek, OpenRouter, Groq — by changing those three values only.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md) for what's next.
