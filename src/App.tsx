@@ -11,16 +11,30 @@ import {
   estimateSeconds,
   formatDuration,
 } from './lib/caseDoc'
-import { loadAll, upsert, remove } from './lib/storage'
-import { toMarkdown, download } from './lib/export'
+import { loadAll, upsert, remove, saveAll } from './lib/storage'
+import {
+  toMarkdown,
+  toPlainText,
+  toBackupJson,
+  parseBackupJson,
+  download,
+  safeFilename,
+} from './lib/export'
 import { TONES, DEFAULT_TONE, type ToneId } from './lib/tone'
+import { starterCase } from './lib/templates'
 import Coach from './components/Coach'
+import SpeechView from './components/SpeechView'
+import AboutDialog from './components/AboutDialog'
 
 export default function App() {
   const [docs, setDocs] = useState<CaseDoc[]>([])
   const [currentId, setCurrentId] = useState<string | null>(null)
   const [savedAt, setSavedAt] = useState<string | null>(null)
+  const [showSpeech, setShowSpeech] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
+  const [showExport, setShowExport] = useState(false)
   const timer = useRef<number | null>(null)
+  const fileInput = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
     const all = loadAll()
@@ -74,11 +88,38 @@ export default function App() {
     setCurrentId(doc.id)
   }
 
+  function createFromTemplate() {
+    const doc = starterCase()
+    setDocs(upsert(doc))
+    setCurrentId(doc.id)
+  }
+
   function deleteDoc(id: string) {
     if (!confirm('Delete this case? This cannot be undone.')) return
     const remaining = remove(id)
     setDocs(remaining)
     if (currentId === id) setCurrentId(remaining[0]?.id ?? null)
+  }
+
+  // Restore merges by id so a backup never silently wipes newer local work.
+  function importBackup(file: File) {
+    const reader = new FileReader()
+    reader.onload = () => {
+      try {
+        const incoming = parseBackupJson(String(reader.result))
+        const existing = loadAll()
+        const byId = new Map(existing.map((d) => [d.id, d]))
+        for (const d of incoming) byId.set(d.id, d)
+        const merged = [...byId.values()]
+        saveAll(merged)
+        setDocs(merged)
+        setCurrentId(incoming[0].id)
+        alert(`Restored ${incoming.length} case${incoming.length === 1 ? '' : 's'}.`)
+      } catch (e: any) {
+        alert(e?.message ?? 'Could not read that backup file.')
+      }
+    }
+    reader.readAsText(file)
   }
 
   const words = current ? wordCount(speakableText(current)) : 0
@@ -100,6 +141,9 @@ export default function App() {
         </div>
         <button className="btn primary block" onClick={createDoc}>
           + New case
+        </button>
+        <button className="btn block small" onClick={createFromTemplate}>
+          Start from template
         </button>
         <div className="doc-list">
           {docs.map((d) => (
@@ -126,8 +170,33 @@ export default function App() {
             </div>
           ))}
         </div>
+        <div className="sidebar-tools">
+          <button
+            className="btn small block"
+            onClick={() => download('caseforge-backup.json', toBackupJson(loadAll()), 'application/json')}
+          >
+            ⭳ Back up all cases
+          </button>
+          <button className="btn small block" onClick={() => fileInput.current?.click()}>
+            ⭱ Restore backup
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="application/json,.json"
+            style={{ display: 'none' }}
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              if (f) importBackup(f)
+              e.target.value = ''
+            }}
+          />
+        </div>
         <div className="sidebar-foot">
-          PF constructive coach · v0.1 · work saved in your browser
+          Work is saved in this browser only.{' '}
+          <button className="linkish" onClick={() => setShowAbout(true)}>
+            About &amp; integrity
+          </button>
         </div>
       </aside>
 
@@ -163,17 +232,49 @@ export default function App() {
                   {words} words · ~{formatDuration(seconds)}
                   <span className="counter-sub"> / target {target}</span>
                 </span>
-                <button
-                  className="btn"
-                  onClick={() =>
-                    download(
-                      `${(current.title || 'case').replace(/\s+/g, '-')}.md`,
-                      toMarkdown(current),
-                    )
-                  }
-                >
-                  Export .md
+                <button className="btn" onClick={() => setShowSpeech(true)}>
+                  Speech view
                 </button>
+                <div className="menu-wrap">
+                  <button className="btn" onClick={() => setShowExport((v) => !v)}>
+                    Export ▾
+                  </button>
+                  {showExport && (
+                    <>
+                      <div className="menu-backdrop" onClick={() => setShowExport(false)} />
+                      <div className="menu">
+                        <button
+                          onClick={() => {
+                            download(`${safeFilename(current)}.md`, toMarkdown(current), 'text/markdown')
+                            setShowExport(false)
+                          }}
+                        >
+                          Markdown (.md)
+                        </button>
+                        <button
+                          onClick={() => {
+                            download(`${safeFilename(current)}.txt`, toPlainText(current))
+                            setShowExport(false)
+                          }}
+                        >
+                          Plain text (.txt)
+                        </button>
+                        <button
+                          onClick={() => {
+                            download(
+                              `${safeFilename(current)}-backup.json`,
+                              toBackupJson([current]),
+                              'application/json',
+                            )
+                            setShowExport(false)
+                          }}
+                        >
+                          Backup this case (.json)
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
                 <span className="saved">
                   {savedAt ? `Saved ${savedAt}` : 'Autosaves'}
                 </span>
@@ -438,12 +539,20 @@ export default function App() {
               <p className="footnote">
                 CaseForge gives feedback on work you write — it never writes your
                 case or invents sources. Check your league/tournament rules on AI
-                assistance, and verify every source you cite.
+                assistance, and verify every source you cite.{' '}
+                <button className="linkish" onClick={() => setShowAbout(true)}>
+                  Read more
+                </button>
               </p>
             </div>
           </>
         )}
       </main>
+
+      {showSpeech && current && (
+        <SpeechView doc={current} onClose={() => setShowSpeech(false)} />
+      )}
+      {showAbout && <AboutDialog onClose={() => setShowAbout(false)} />}
     </div>
   )
 }

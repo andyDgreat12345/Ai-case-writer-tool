@@ -55,8 +55,68 @@ export function toMarkdown(doc: CaseDoc): string {
   return lines.join('\n').trim() + '\n'
 }
 
-export function download(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+// Plain text, formatted for reading aloud rather than for a document.
+export function toPlainText(doc: CaseDoc): string {
+  const lines: string[] = []
+  lines.push((doc.title || 'Untitled case').toUpperCase())
+  if (doc.resolution) lines.push(`Resolution: ${doc.resolution}`)
+  lines.push(`Side: ${doc.side}`)
+  lines.push('')
+
+  if (doc.framework.trim()) {
+    lines.push('FRAMEWORK')
+    lines.push(doc.framework)
+    lines.push('')
+  }
+
+  if (doc.definitions.length) {
+    lines.push('DEFINITIONS')
+    for (const d of doc.definitions) {
+      lines.push(`  ${d.term || '—'}: ${d.definition}${d.source ? ` (${d.source})` : ''}`)
+    }
+    lines.push('')
+  }
+
+  doc.contentions.forEach((c, i) => {
+    lines.push(`CONTENTION ${i + 1}${c.title ? `: ${c.title}` : ''}`)
+    if (c.claim.trim()) lines.push(`  Claim: ${c.claim}`)
+    if (c.warrant.trim()) lines.push(`  Warrant: ${c.warrant}`)
+    for (const e of c.evidence) {
+      lines.push(`  Evidence: ${e.text}${e.citation ? ` (${e.citation})` : ''}`)
+    }
+    if (c.impact.trim()) lines.push(`  Impact: ${c.impact}`)
+    lines.push('')
+  })
+
+  return lines.join('\n').trim() + '\n'
+}
+
+// --- Backup / restore -------------------------------------------------------
+// The only safety net for a login-free tool: browser storage can be cleared.
+
+export function toBackupJson(docs: CaseDoc[]): string {
+  return JSON.stringify({ app: 'caseforge', version: 1, exportedAt: new Date().toISOString(), docs }, null, 2)
+}
+
+// Returns the docs from a backup file, or throws with a readable message.
+export function parseBackupJson(raw: string): CaseDoc[] {
+  let data: any
+  try {
+    data = JSON.parse(raw)
+  } catch {
+    throw new Error("That file isn't valid JSON.")
+  }
+  const docs = Array.isArray(data) ? data : data?.docs
+  if (!Array.isArray(docs)) throw new Error("That file doesn't look like a CaseForge backup.")
+  const valid = docs.filter(
+    (d: any) => d && typeof d.id === 'string' && Array.isArray(d.contentions),
+  )
+  if (!valid.length) throw new Error('No cases found in that file.')
+  return valid as CaseDoc[]
+}
+
+export function download(filename: string, content: string, type = 'text/plain'): void {
+  const blob = new Blob([content], { type: `${type};charset=utf-8` })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -65,4 +125,8 @@ export function download(filename: string, content: string): void {
   a.click()
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
+}
+
+export function safeFilename(doc: CaseDoc): string {
+  return (doc.title || 'case').replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '-') || 'case'
 }
