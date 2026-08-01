@@ -183,16 +183,20 @@ Details and thresholds live in
 
 A committed `.env.example` documents these with **no real values**.
 
-## 9. Repository layout (target)
+## 9. Repository layout (actual)
+
+The frontend lives at the **repo root** (not in `/web`) so Vercel needs
+zero configuration — it auto-detects Vite and the `/api` functions folder.
 
 ```
-/                      README + config
+/                      Vite + React app root (package.json, index.html, vite.config.ts)
+/src
+  /lib                 CaseDoc model, localStorage, export
+  App.tsx              the structured editor (v1 core)
+  main.tsx, styles.css
+/api                   serverless functions (health now; feedback, rewrite next)
 /docs                  these planning docs
-/web                   frontend SPA (Vite + React)
-  /src/components       editor sections, feedback panel
-  /src/lib             CaseDoc model, storage, export, api client
-/api                   serverless functions (feedback, rewrite, health)
-/prompts               versioned prompt templates
+/prompts               versioned prompt templates (added with the AI phase)
 .env.example
 ```
 
