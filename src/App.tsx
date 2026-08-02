@@ -257,7 +257,7 @@ export default function App() {
                     ))}
                   </select>
                 </label>
-                {budget && (
+                {budget && budget.enforced !== false && (
                   <span
                     className={`budget ${budget.requestsLeft <= 5 ? 'low' : ''}`}
                     title={`Coach requests left today: ${budget.requestsLeft} of ${budget.requestsPerDay}`}

@@ -70,10 +70,15 @@ The AI costs money per call and the site is public.
   - Remaining allowance is returned to the browser and shown in the toolbar, so
     a user can see what's left rather than hitting a wall unexplained. When a
     cap is reached the coach pauses and says so; **the editor keeps working**.
-  - *Honest limitation:* these counters are in-memory, so they reset when a
-    serverless instance recycles and are not shared across concurrent
-    instances. They are a cost **dampener**, not an airtight quota. The only
-    hard ceiling is the spend limit set on the provider account itself.
+  - **Storage decides whether the cap is real.** With
+    `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN` set, counters live in
+    Redis and the caps bind across every request and instance. Without them
+    they fall back to per-instance memory — and measured on Vercel, consecutive
+    requests land on *fresh* instances, so the daily counter resets almost every
+    call and the daily cap does **not** meaningfully bind. In that state the UI
+    hides the allowance badge rather than display a number that isn't real.
+  - Either way the only **hard** ceiling is the spend limit set on the provider
+    account itself. Set one.
 - **Input caps:** reject any section over `MAX_INPUT_CHARS` before it hits the
   model.
 - **Output caps and scope limits** (`api/_lib/bounds.ts`): `maxTokens` per task,

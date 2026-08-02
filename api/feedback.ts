@@ -8,7 +8,7 @@ import { feedbackSystem, feedbackUser, type FeedbackKind } from './_lib/prompts.
 import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence, addsFabricatedCitation } from './_lib/guard.js'
 import { clamp, overgrown, MAX_SUGGESTIONS } from './_lib/bounds.js'
-import { checkQuota, recordRequest, recordTokens, budgetFor } from './_lib/usage.js'
+import { checkQuota, recordRequest, recordTokens, budgetFrom } from './_lib/usage.js'
 
 const WITHHELD =
   'A suggested rewrite was withheld because it invented a source or figure you did not write. Find and verify that evidence yourself.'
@@ -38,9 +38,9 @@ export default async function handler(req: any, res: any) {
     return res.status(429).json({ error: 'Slow down a moment and try again.' })
   }
 
-  const quota = checkQuota(ip)
+  const quota = await checkQuota(ip)
   if (!quota.allowed) {
-    return res.status(429).json({ error: quota.reason, budget: budgetFor(ip) })
+    return res.status(429).json({ error: quota.reason, budget: budgetFrom(quota.usage) })
   }
 
   const { text, kind, section, resolution, side } = body(req)
@@ -53,7 +53,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'That section is too long to review at once.' })
   }
 
-  recordRequest(ip)
+  await recordRequest(ip)
 
   try {
     const { text: raw, tokens } = await complete({
@@ -63,7 +63,7 @@ export default async function handler(req: any, res: any) {
       temperature: 0.3,
       maxTokens: 700,
     })
-    recordTokens(ip, tokens)
+    await recordTokens(ip, tokens)
 
     let parsed: any
     try {
@@ -103,7 +103,11 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({
       summary: clamp(String(parsed?.summary ?? ''), 200),
       suggestions,
-      budget: budgetFor(ip),
+      budget: budgetFrom({
+        ...quota.usage,
+        requests: quota.usage.requests + 1,
+        tokens: quota.usage.tokens + tokens,
+      }),
     })
   } catch (err: any) {
     const msg = String(err?.message ?? '')
