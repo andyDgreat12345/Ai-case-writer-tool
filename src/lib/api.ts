@@ -7,6 +7,8 @@ export interface Suggestion {
   issue: string
   suggestion: string
   rewrite?: string
+  // Set when the server withheld a rewrite that invented a source or figure.
+  note?: string
 }
 
 export interface FeedbackResult {

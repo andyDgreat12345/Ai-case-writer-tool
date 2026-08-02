@@ -17,6 +17,23 @@ improves the student's own work; it does not do the work for them.
   statistics, or quotes. Argument feedback flags *"this needs a citation"* — it
   never manufactures one. This is the single most important rule (fabricated
   evidence in a real round is a serious offense).
+
+  **Prompt instructions alone proved insufficient.** In live testing, asked to
+  improve a span containing an unsourced statistic, the model returned a rewrite
+  reading *"According to a 2020 study by the Stanford Institute for Economic
+  Policy Research…"* — a complete fabrication a debater could have read aloud in
+  a round. The rewrite field is the loophole: told to improve a weak claim, a
+  model will helpfully invent the evidence that would make it strong.
+
+  So this rule is now enforced **server-side as well as in the prompt**
+  (`api/_lib/guard.ts`). Generated rewrites are scanned for evidence-like tokens
+  — years, "according to", study/institution nouns, percentages, dollar figures —
+  and if one appears that is **not present in the debater's own text**, the
+  rewrite is discarded before it reaches the browser. The feedback keeps its
+  issue and suggestion, plus a note explaining that a rewrite was withheld and
+  the debater must source the claim themselves. `/api/rewrite` filters its
+  options the same way. Tokens the debater already wrote pass through, so
+  legitimate polishing is unaffected.
 - **Human-in-the-loop.** Every AI suggestion is accept/dismiss. Nothing is
   auto-inserted.
 - **Own-voice preservation.** Rewrites refine the debater's wording; they don't

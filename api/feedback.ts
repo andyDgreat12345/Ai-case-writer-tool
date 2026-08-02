@@ -6,6 +6,7 @@ import { complete, aiConfigured } from './_lib/ai.js'
 import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit.js'
 import { feedbackSystem, feedbackUser, type FeedbackKind } from './_lib/prompts.js'
 import { parseLooseJson } from './_lib/json.js'
+import { addsUnsupportedEvidence } from './_lib/guard.js'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -58,14 +59,23 @@ export default async function handler(req: any, res: any) {
       ? parsed.suggestions
           .filter((s: any) => s && typeof s === 'object')
           .slice(0, 5)
-          .map((s: any) => ({
-            type: k,
-            severity: ['low', 'medium', 'high'].includes(s.severity) ? s.severity : 'medium',
-            span: String(s.span ?? ''),
-            issue: String(s.issue ?? ''),
-            suggestion: String(s.suggestion ?? ''),
-            rewrite: s.rewrite ? String(s.rewrite) : undefined,
-          }))
+          .map((s: any) => {
+            const rewrite = s.rewrite ? String(s.rewrite) : undefined
+            // Drop any rewrite that smuggles in evidence the debater never wrote.
+            const safeRewrite =
+              rewrite && !addsUnsupportedEvidence(text, rewrite) ? rewrite : undefined
+            return {
+              type: k,
+              severity: ['low', 'medium', 'high'].includes(s.severity) ? s.severity : 'medium',
+              span: String(s.span ?? ''),
+              issue: String(s.issue ?? ''),
+              suggestion: String(s.suggestion ?? ''),
+              rewrite: safeRewrite,
+              ...(rewrite && !safeRewrite
+                ? { note: 'A suggested rewrite was withheld because it added a source or figure you did not write. Find and cite that evidence yourself.' }
+                : {}),
+            }
+          })
       : []
 
     return res.status(200).json({
