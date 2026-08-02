@@ -16,6 +16,9 @@ export interface Budget {
   requestsPerDay: number
   tokensLeft: number
   tokensPerDay: number
+  // False when the server has no shared counter store, so the figure is
+  // indicative rather than a cap that actually binds.
+  enforced?: boolean
 }
 
 export interface FeedbackResult {

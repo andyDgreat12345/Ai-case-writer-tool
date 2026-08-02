@@ -8,7 +8,7 @@ import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts.js'
 import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence } from './_lib/guard.js'
 import { clamp, overgrown, MAX_REWRITE_OPTIONS } from './_lib/bounds.js'
-import { checkQuota, recordRequest, recordTokens, budgetFor } from './_lib/usage.js'
+import { checkQuota, recordRequest, recordTokens, budgetFrom } from './_lib/usage.js'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -33,9 +33,9 @@ export default async function handler(req: any, res: any) {
     return res.status(429).json({ error: 'Slow down a moment and try again.' })
   }
 
-  const quota = checkQuota(ip)
+  const quota = await checkQuota(ip)
   if (!quota.allowed) {
-    return res.status(429).json({ error: quota.reason, budget: budgetFor(ip) })
+    return res.status(429).json({ error: quota.reason, budget: budgetFrom(quota.usage) })
   }
 
   const { text, tone, section, resolution, side } = body(req)
@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Pick a valid tone.' })
   }
 
-  recordRequest(ip)
+  await recordRequest(ip)
 
   try {
     const { text: raw, tokens } = await complete({
@@ -60,7 +60,13 @@ export default async function handler(req: any, res: any) {
       temperature: 0.7,
       maxTokens: 700,
     })
-    recordTokens(ip, tokens)
+    await recordTokens(ip, tokens)
+
+    const budget = budgetFrom({
+      ...quota.usage,
+      requests: quota.usage.requests + 1,
+      tokens: quota.usage.tokens + tokens,
+    })
 
     let parsed: any
     try {
@@ -87,11 +93,11 @@ export default async function handler(req: any, res: any) {
         error: candidates.length
           ? 'The coach kept adding sources or going beyond your passage, so nothing was returned. Try a shorter passage without unsourced statistics.'
           : 'No rewrite came back. Try again.',
-        budget: budgetFor(ip),
+        budget,
       })
     }
 
-    return res.status(200).json({ options, budget: budgetFor(ip) })
+    return res.status(200).json({ options, budget })
   } catch (err: any) {
     const msg = String(err?.message ?? '')
     const code = msg.startsWith('AI_PROVIDER_4') ? 502 : 503
