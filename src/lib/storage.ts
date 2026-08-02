@@ -1,13 +1,15 @@
 // Login-free v1: cases live in the browser only. No server, no accounts.
 
-import type { CaseDoc } from './caseDoc'
+import { type CaseDoc, migrateDoc } from './caseDoc'
 
 const KEY = 'caseforge.docs.v1'
 
 export function loadAll(): CaseDoc[] {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? (JSON.parse(raw) as CaseDoc[]) : []
+    if (!raw) return []
+    // Older saves used fixed warrant/evidence/impact fields.
+    return (JSON.parse(raw) as any[]).map(migrateDoc)
   } catch {
     return []
   }

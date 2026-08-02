@@ -14,10 +14,16 @@ export function aiConfigured(): boolean {
   return Boolean(process.env.AI_API_KEY)
 }
 
+export interface Completion {
+  text: string
+  tokens: number
+}
+
 interface Attempt {
   ok: boolean
   status?: number
   text?: string
+  tokens?: number
   detail?: string
 }
 
@@ -44,7 +50,12 @@ async function callProvider(
     const data: any = await resp.json()
     const text = data?.choices?.[0]?.message?.content
     if (typeof text !== 'string' || !text.trim()) return { ok: false, detail: 'AI_EMPTY_RESPONSE' }
-    return { ok: true, text }
+    // Providers that omit usage still get metered, via a rough estimate.
+    const reported = Number(data?.usage?.total_tokens)
+    const tokens = Number.isFinite(reported) && reported > 0
+      ? reported
+      : Math.ceil((JSON.stringify(body.messages).length + text.length) / 4)
+    return { ok: true, text, tokens }
   } finally {
     clearTimeout(timer)
   }
@@ -58,7 +69,7 @@ function isJsonModeRejection(a: Attempt): boolean {
   return d.includes('response_format') || d.includes('json_object') || d.includes('json mode')
 }
 
-export async function complete(opts: CompleteOptions): Promise<string> {
+export async function complete(opts: CompleteOptions): Promise<Completion> {
   const apiKey = process.env.AI_API_KEY
   const baseUrl = (process.env.AI_BASE_URL ?? 'https://api.deepseek.com').replace(/\/$/, '')
   const model = process.env.AI_MODEL ?? 'deepseek-chat'
@@ -90,13 +101,13 @@ export async function complete(opts: CompleteOptions): Promise<string> {
       continue
     }
 
-    if (res.ok) return res.text!
+    if (res.ok) return { text: res.text!, tokens: res.tokens ?? 0 }
 
     // Provider doesn't support JSON mode — drop it and ask plainly. The
     // response is parsed leniently downstream, so this still works.
     if (opts.json && isJsonModeRejection(res)) {
       const plain = await callProvider(baseUrl, apiKey, base)
-      if (plain.ok) return plain.text!
+      if (plain.ok) return { text: plain.text!, tokens: plain.tokens ?? 0 }
       last = plain
       break
     }

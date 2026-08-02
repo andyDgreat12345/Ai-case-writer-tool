@@ -59,6 +59,12 @@ Targeted, topic-aware feedback per section. See
       (prompts only, never pre-written arguments or evidence).
 - [x] **About & integrity dialog** — the user-facing half of the content policy:
       what the coach won't do, league-rules warning, and the data notice.
+- [x] **Flexible contentions** — a contention is a sequence of blocks
+      (warrant / evidence / impact / analysis) the debater adds, reorders, and
+      repeats freely, so one contention can carry several warrants or more than
+      one impact. Cases saved under the old fixed-field shape migrate on load.
+- [x] **Per-user spend caps** — daily request and token budgets per client,
+      a site-wide ceiling, and a remaining-allowance indicator in the toolbar.
 - [ ] `.docx` export.
 - [ ] Rebuttal / block scratchpad (prep beyond the constructive).
 - [ ] Shareable read-only link (needs minimal backend storage).

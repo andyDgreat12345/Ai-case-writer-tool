@@ -1,12 +1,14 @@
 // POST /api/feedback
 // Body: { text, kind: 'wording'|'argument', section?, resolution?, side? }
-// Returns: { summary, suggestions: [...] }
+// Returns: { summary, suggestions: [...], budget }
 
 import { complete, aiConfigured } from './_lib/ai.js'
 import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit.js'
 import { feedbackSystem, feedbackUser, type FeedbackKind } from './_lib/prompts.js'
 import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence, addsFabricatedCitation } from './_lib/guard.js'
+import { clamp, overgrown, MAX_SUGGESTIONS } from './_lib/bounds.js'
+import { checkQuota, recordRequest, recordTokens, budgetFor } from './_lib/usage.js'
 
 const WITHHELD =
   'A suggested rewrite was withheld because it invented a source or figure you did not write. Find and verify that evidence yourself.'
@@ -30,8 +32,15 @@ export default async function handler(req: any, res: any) {
   if (!aiConfigured()) {
     return res.status(503).json({ error: 'The AI coach is not configured yet.' })
   }
-  if (!allow(clientIp(req), perMinuteLimit())) {
+
+  const ip = clientIp(req)
+  if (!allow(ip, perMinuteLimit())) {
     return res.status(429).json({ error: 'Slow down a moment and try again.' })
+  }
+
+  const quota = checkQuota(ip)
+  if (!quota.allowed) {
+    return res.status(429).json({ error: quota.reason, budget: budgetFor(ip) })
   }
 
   const { text, kind, section, resolution, side } = body(req)
@@ -44,14 +53,17 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'That section is too long to review at once.' })
   }
 
+  recordRequest(ip)
+
   try {
-    const raw = await complete({
+    const { text: raw, tokens } = await complete({
       system: feedbackSystem(k),
       user: feedbackUser({ text, section, resolution, side }),
       json: true,
       temperature: 0.3,
-      maxTokens: 900,
+      maxTokens: 700,
     })
+    recordTokens(ip, tokens)
 
     let parsed: any
     try {
@@ -63,21 +75,24 @@ export default async function handler(req: any, res: any) {
     const suggestions = Array.isArray(parsed?.suggestions)
       ? parsed.suggestions
           .filter((s: any) => s && typeof s === 'object')
-          .slice(0, 5)
+          .slice(0, MAX_SUGGESTIONS)
           .map((s: any) => {
-            // Drop any rewrite that smuggles in evidence the debater never wrote.
-            const rewrite = s.rewrite ? String(s.rewrite) : undefined
-            const rewriteBlocked = Boolean(rewrite) && addsUnsupportedEvidence(text, rewrite!)
+            // Drop any rewrite that smuggles in evidence the debater never
+            // wrote, or that has outgrown the passage it was meant to improve.
+            const rewrite = s.rewrite ? clamp(String(s.rewrite)) : undefined
+            const rewriteBlocked =
+              Boolean(rewrite) &&
+              (addsUnsupportedEvidence(text, rewrite!) || overgrown(s.span ?? text, rewrite!))
 
             // Advice can leak a fabricated citation too, as a worked example.
-            const rawSuggestion = String(s.suggestion ?? '')
+            const rawSuggestion = clamp(String(s.suggestion ?? ''))
             const suggestionBlocked = addsFabricatedCitation(text, rawSuggestion)
 
             return {
               type: k,
               severity: ['low', 'medium', 'high'].includes(s.severity) ? s.severity : 'medium',
-              span: String(s.span ?? ''),
-              issue: String(s.issue ?? ''),
+              span: clamp(String(s.span ?? '')),
+              issue: clamp(String(s.issue ?? '')),
               suggestion: suggestionBlocked ? SAFE_SUGGESTION : rawSuggestion,
               rewrite: rewriteBlocked ? undefined : rewrite,
               ...(rewriteBlocked || suggestionBlocked ? { note: WITHHELD } : {}),
@@ -86,8 +101,9 @@ export default async function handler(req: any, res: any) {
       : []
 
     return res.status(200).json({
-      summary: typeof parsed?.summary === 'string' ? parsed.summary : '',
+      summary: clamp(String(parsed?.summary ?? ''), 200),
       suggestions,
+      budget: budgetFor(ip),
     })
   } catch (err: any) {
     const msg = String(err?.message ?? '')

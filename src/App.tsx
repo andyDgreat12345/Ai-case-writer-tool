@@ -2,14 +2,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type CaseDoc,
   type Contention,
-  type Evidence,
+  type Block,
+  type BlockType,
   type Side,
   newCase,
   newContention,
+  newBlock,
   speakableText,
   wordCount,
   estimateSeconds,
   formatDuration,
+  BLOCK_LABELS,
+  BLOCK_HINTS,
+  BLOCK_SECTIONS,
 } from './lib/caseDoc'
 import { loadAll, upsert, remove, saveAll } from './lib/storage'
 import {
@@ -23,6 +28,7 @@ import {
 import { TONES, DEFAULT_TONE, type ToneId } from './lib/tone'
 import { starterCase } from './lib/templates'
 import Coach from './components/Coach'
+import type { Budget } from './lib/api'
 import SpeechView from './components/SpeechView'
 import AboutDialog from './components/AboutDialog'
 
@@ -33,6 +39,7 @@ export default function App() {
   const [showSpeech, setShowSpeech] = useState(false)
   const [showAbout, setShowAbout] = useState(false)
   const [showExport, setShowExport] = useState(false)
+  const [budget, setBudget] = useState<Budget | null>(null)
   const timer = useRef<number | null>(null)
   const fileInput = useRef<HTMLInputElement | null>(null)
 
@@ -74,12 +81,34 @@ export default function App() {
     })
   }
 
-  function updateEvidence(cid: string, idx: number, patch: Partial<Evidence>) {
+  function updateBlock(cid: string, bid: string, patch: Partial<Block>) {
     const c = current?.contentions.find((x) => x.id === cid)
     if (!c) return
     updateContention(cid, {
-      evidence: c.evidence.map((e, i) => (i === idx ? { ...e, ...patch } : e)),
+      blocks: c.blocks.map((b) => (b.id === bid ? { ...b, ...patch } : b)),
     })
+  }
+
+  function addBlock(cid: string, type: BlockType) {
+    const c = current?.contentions.find((x) => x.id === cid)
+    if (!c) return
+    updateContention(cid, { blocks: [...c.blocks, newBlock(type)] })
+  }
+
+  function removeBlock(cid: string, bid: string) {
+    const c = current?.contentions.find((x) => x.id === cid)
+    if (!c) return
+    updateContention(cid, { blocks: c.blocks.filter((b) => b.id !== bid) })
+  }
+
+  function moveBlock(cid: string, index: number, delta: number) {
+    const c = current?.contentions.find((x) => x.id === cid)
+    if (!c) return
+    const target = index + delta
+    if (target < 0 || target >= c.blocks.length) return
+    const blocks = [...c.blocks]
+    ;[blocks[index], blocks[target]] = [blocks[target], blocks[index]]
+    updateContention(cid, { blocks })
   }
 
   function createDoc() {
@@ -228,6 +257,14 @@ export default function App() {
                     ))}
                   </select>
                 </label>
+                {budget && (
+                  <span
+                    className={`budget ${budget.requestsLeft <= 5 ? 'low' : ''}`}
+                    title={`Coach requests left today: ${budget.requestsLeft} of ${budget.requestsPerDay}`}
+                  >
+                    ✦ {budget.requestsLeft}/{budget.requestsPerDay}
+                  </span>
+                )}
                 <span className={`counter ${overTarget ? 'over' : ''}`}>
                   {words} words · ~{formatDuration(seconds)}
                   <span className="counter-sub"> / target {target}</span>
@@ -326,6 +363,7 @@ export default function App() {
                   resolution={current.resolution}
                   side={current.side}
                   onApply={(t) => update({ framework: t })}
+                  onBudget={setBudget}
                 />
               </section>
 
@@ -400,9 +438,7 @@ export default function App() {
                         className="btn small ghost"
                         onClick={() =>
                           update({
-                            contentions: current.contentions.filter(
-                              (x) => x.id !== c.id,
-                            ),
+                            contentions: current.contentions.filter((x) => x.id !== c.id),
                           })
                         }
                       >
@@ -414,9 +450,7 @@ export default function App() {
                     className="field-sm"
                     placeholder="Contention title"
                     value={c.title}
-                    onChange={(e) =>
-                      updateContention(c.id, { title: e.target.value })
-                    }
+                    onChange={(e) => updateContention(c.id, { title: e.target.value })}
                   />
 
                   <label className="field">
@@ -425,103 +459,102 @@ export default function App() {
                       rows={2}
                       placeholder="What you are arguing."
                       value={c.claim}
-                      onChange={(e) =>
-                        updateContention(c.id, { claim: e.target.value })
-                      }
+                      onChange={(e) => updateContention(c.id, { claim: e.target.value })}
                     />
                   </label>
 
-                  <label className="field">
-                    <span className="label">Warrant</span>
-                    <textarea
-                      rows={3}
-                      placeholder="Why the claim is true — the reasoning."
-                      value={c.warrant}
-                      onChange={(e) =>
-                        updateContention(c.id, { warrant: e.target.value })
-                      }
-                    />
-                  </label>
-                  <Coach
-                    actions={['wording', 'argument', 'rewrite']}
-                    section="warrant (reasoning that proves the claim)"
-                    text={c.warrant}
-                    tone={tone}
-                    resolution={current.resolution}
-                    side={current.side}
-                    onApply={(t) => updateContention(c.id, { warrant: t })}
-                  />
-
-                  <div className="field">
-                    <div className="card-head">
-                      <span className="label">Evidence</span>
-                      <button
-                        className="btn small"
-                        onClick={() =>
-                          updateContention(c.id, {
-                            evidence: [...c.evidence, { text: '', citation: '' }],
-                          })
-                        }
-                      >
-                        + Add
-                      </button>
-                    </div>
-                    {c.evidence.map((e, ei) => (
-                      <div className="ev-row" key={ei}>
-                        <textarea
-                          rows={2}
-                          placeholder="Card / stat / quote"
-                          value={e.text}
-                          onChange={(ev) =>
-                            updateEvidence(c.id, ei, { text: ev.target.value })
+                  {c.blocks.map((b, bi) => (
+                    <div className={`block block-${b.type}`} key={b.id}>
+                      <div className="block-head">
+                        <select
+                          className="block-type"
+                          value={b.type}
+                          onChange={(e) =>
+                            updateBlock(c.id, b.id, { type: e.target.value as BlockType })
                           }
-                        />
-                        <div className="row">
-                          <input
-                            className="field-sm grow"
-                            placeholder="Citation (author, date, outlet)"
-                            value={e.citation}
-                            onChange={(ev) =>
-                              updateEvidence(c.id, ei, {
-                                citation: ev.target.value,
-                              })
-                            }
-                          />
+                        >
+                          {(Object.keys(BLOCK_LABELS) as BlockType[]).map((t) => (
+                            <option key={t} value={t}>
+                              {BLOCK_LABELS[t]}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="block-hint">{BLOCK_HINTS[b.type]}</span>
+                        <div className="block-actions">
                           <button
-                            className="btn small ghost"
-                            onClick={() =>
-                              updateContention(c.id, {
-                                evidence: c.evidence.filter((_, j) => j !== ei),
-                              })
-                            }
+                            className="icon-btn"
+                            title="Move up"
+                            disabled={bi === 0}
+                            onClick={() => moveBlock(c.id, bi, -1)}
                           >
-                            Remove
+                            ↑
+                          </button>
+                          <button
+                            className="icon-btn"
+                            title="Move down"
+                            disabled={bi === c.blocks.length - 1}
+                            onClick={() => moveBlock(c.id, bi, 1)}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            className="icon-btn"
+                            title="Remove"
+                            onClick={() => removeBlock(c.id, b.id)}
+                          >
+                            ×
                           </button>
                         </div>
                       </div>
+
+                      <textarea
+                        rows={b.type === 'evidence' ? 2 : 3}
+                        placeholder={BLOCK_HINTS[b.type]}
+                        value={b.text}
+                        onChange={(e) => updateBlock(c.id, b.id, { text: e.target.value })}
+                      />
+
+                      {b.type === 'evidence' ? (
+                        <>
+                          <input
+                            className="field-sm grow"
+                            placeholder="Citation (author, date, outlet)"
+                            value={b.citation ?? ''}
+                            onChange={(e) =>
+                              updateBlock(c.id, b.id, { citation: e.target.value })
+                            }
+                          />
+                          <p className="block-note">
+                            Quoted material. The coach never rewrites evidence — altering a
+                            source is falsifying it.
+                          </p>
+                        </>
+                      ) : (
+                        <Coach
+                          actions={['wording', 'argument', 'rewrite']}
+                          section={BLOCK_SECTIONS[b.type]}
+                          text={b.text}
+                          tone={tone}
+                          resolution={current.resolution}
+                          side={current.side}
+                          onApply={(t) => updateBlock(c.id, b.id, { text: t })}
+                          onBudget={setBudget}
+                        />
+                      )}
+                    </div>
+                  ))}
+
+                  <div className="block-add">
+                    {(Object.keys(BLOCK_LABELS) as BlockType[]).map((t) => (
+                      <button
+                        key={t}
+                        className="btn small ghost"
+                        onClick={() => addBlock(c.id, t)}
+                      >
+                        + {BLOCK_LABELS[t]}
+                      </button>
                     ))}
                   </div>
-
-                  <label className="field">
-                    <span className="label">Impact</span>
-                    <textarea
-                      rows={2}
-                      placeholder="Why it matters + how it weighs."
-                      value={c.impact}
-                      onChange={(e) =>
-                        updateContention(c.id, { impact: e.target.value })
-                      }
-                    />
-                  </label>
-                  <Coach
-                    actions={['wording', 'argument', 'rewrite']}
-                    section="impact (why it matters and how it weighs)"
-                    text={c.impact}
-                    tone={tone}
-                    resolution={current.resolution}
-                    side={current.side}
-                    onApply={(t) => updateContention(c.id, { impact: t })}
-                  />
                 </section>
               ))}
 

@@ -11,9 +11,17 @@ export interface Suggestion {
   note?: string
 }
 
+export interface Budget {
+  requestsLeft: number
+  requestsPerDay: number
+  tokensLeft: number
+  tokensPerDay: number
+}
+
 export interface FeedbackResult {
   summary: string
   suggestions: Suggestion[]
+  budget?: Budget
 }
 
 interface Ctx {
@@ -43,6 +51,6 @@ export function getFeedback(
 
 export function getRewrite(
   input: { text: string; tone: ToneId } & Ctx,
-): Promise<{ options: string[] }> {
-  return postJson<{ options: string[] }>('/api/rewrite', input)
+): Promise<{ options: string[]; budget?: Budget }> {
+  return postJson<{ options: string[]; budget?: Budget }>('/api/rewrite', input)
 }
