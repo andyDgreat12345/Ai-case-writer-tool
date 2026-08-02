@@ -4,26 +4,53 @@
 // a span containing an unsourced claim, models will helpfully manufacture a
 // plausible citation. This strips any such text before it reaches the user.
 
-// Tokens that signal evidence. If one appears in generated text but not in
-// what the debater wrote, the model introduced it.
-const EVIDENCE_PATTERNS: RegExp[] = [
-  /\b(19|20)\d{2}\b/g, // a year
-  /according to/gi,
-  /\b(study|studies|report|survey|poll|research|paper|analysis|data)\b/gi,
-  /\b(university|institute|institution|center|centre|bureau|department|agency|association|foundation|journal|review|commission)\b/gi,
-  /\b\d+(\.\d+)?\s?(%|percent|percentage points?)\b/gi,
-  /\$\s?\d[\d,.]*/g,
-]
+// "40 percent" and "40%" are the same figure. Without this, a rewrite that
+// legitimately reuses the debater's own number gets blocked as fabricated.
+function normalize(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/percentage points?/g, '%')
+    .replace(/percent/g, '%')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+%/g, '%')
+}
 
-// True when `generated` introduces evidence-like tokens absent from `source`.
-export function addsUnsupportedEvidence(source: string, generated: string): boolean {
-  const haystack = source.toLowerCase()
-  for (const pattern of EVIDENCE_PATTERNS) {
-    const found = generated.match(pattern)
+const YEAR = /\b(19|20)\d{2}\b/g
+const ATTRIBUTION = /according to/gi
+const MONEY = /\$\s?\d[\d,.]*/g
+const PERCENT = /\b\d+(\.\d+)?\s?(%|percent|percentage points?)/gi
+const SOURCE_NOUNS =
+  /\b(university|institute|institution|center|centre|bureau|agency|association|foundation|journal|commission)\b/gi
+const EVIDENCE_NOUNS = /\b(study|studies|report|survey|poll|research|paper|analysis)\b/gi
+
+// Rewrites are proposed replacement prose the debater may speak verbatim, so
+// every evidence signal counts.
+const REWRITE_PATTERNS = [YEAR, ATTRIBUTION, MONEY, PERCENT, SOURCE_NOUNS, EVIDENCE_NOUNS]
+
+// Suggestions are advice, and advice legitimately says "find a study" or
+// "cite a university source". Only fabricated-citation shapes matter here —
+// a concrete year, an attribution, a figure.
+const SUGGESTION_PATTERNS = [YEAR, ATTRIBUTION, MONEY, PERCENT]
+
+function introducesAny(source: string, generated: string, patterns: RegExp[]): boolean {
+  const haystack = normalize(source)
+  const text = normalize(generated)
+  for (const pattern of patterns) {
+    const found = text.match(pattern)
     if (!found) continue
     for (const token of found) {
-      if (!haystack.includes(token.toLowerCase())) return true
+      if (!haystack.includes(token)) return true
     }
   }
   return false
+}
+
+// True when generated prose introduces evidence absent from the debater's text.
+export function addsUnsupportedEvidence(source: string, generated: string): boolean {
+  return introducesAny(source, generated, REWRITE_PATTERNS)
+}
+
+// True when advice text embeds a concrete, invented citation or figure.
+export function addsFabricatedCitation(source: string, generated: string): boolean {
+  return introducesAny(source, generated, SUGGESTION_PATTERNS)
 }

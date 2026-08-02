@@ -29,11 +29,20 @@ improves the student's own work; it does not do the work for them.
   (`api/_lib/guard.ts`). Generated rewrites are scanned for evidence-like tokens
   — years, "according to", study/institution nouns, percentages, dollar figures —
   and if one appears that is **not present in the debater's own text**, the
-  rewrite is discarded before it reaches the browser. The feedback keeps its
-  issue and suggestion, plus a note explaining that a rewrite was withheld and
-  the debater must source the claim themselves. `/api/rewrite` filters its
+  rewrite is discarded before it reaches the browser. `/api/rewrite` filters its
   options the same way. Tokens the debater already wrote pass through, so
   legitimate polishing is unaffected.
+
+  The **advice field is filtered too**, at a deliberately narrower threshold.
+  The same test run showed the model embedding a fabricated citation inside its
+  `suggestion` as a worked example — *"e.g. 'According to a 2023 study by the
+  Congressional Budget Office…'"* — which a debater could copy just as easily.
+  Advice legitimately says "find a study" or "cite a university source", so
+  suggestions are screened only for concrete **fabricated-citation shapes**
+  (a year, an attribution, a money or percentage figure) and replaced with a
+  safe instruction when one appears. Figures are compared after normalisation,
+  so "40 percent" and "40%" count as the same number and reusing the debater's
+  own statistic is never mistaken for inventing one.
 - **Human-in-the-loop.** Every AI suggestion is accept/dismiss. Nothing is
   auto-inserted.
 - **Own-voice preservation.** Rewrites refine the debater's wording; they don't
