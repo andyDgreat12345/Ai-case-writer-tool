@@ -2,10 +2,10 @@
 // Body: { text, tone, section?, resolution?, side? }
 // Returns: { options: string[] }
 
-import { complete, aiConfigured } from './_lib/ai'
-import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit'
-import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts'
-import { parseLooseJson } from './_lib/json'
+import { complete, aiConfigured } from './_lib/ai.js'
+import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit.js'
+import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts.js'
+import { parseLooseJson } from './_lib/json.js'
 
 function body(req: any): any {
   if (!req.body) return {}
