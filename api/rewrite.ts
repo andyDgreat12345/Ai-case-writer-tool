@@ -1,12 +1,14 @@
 // POST /api/rewrite
 // Body: { text, tone, section?, resolution?, side? }
-// Returns: { options: string[] }
+// Returns: { options: string[], budget }
 
 import { complete, aiConfigured } from './_lib/ai.js'
 import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit.js'
 import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts.js'
 import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence } from './_lib/guard.js'
+import { clamp, overgrown, MAX_REWRITE_OPTIONS } from './_lib/bounds.js'
+import { checkQuota, recordRequest, recordTokens, budgetFor } from './_lib/usage.js'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -25,8 +27,15 @@ export default async function handler(req: any, res: any) {
   if (!aiConfigured()) {
     return res.status(503).json({ error: 'The AI coach is not configured yet.' })
   }
-  if (!allow(clientIp(req), perMinuteLimit())) {
+
+  const ip = clientIp(req)
+  if (!allow(ip, perMinuteLimit())) {
     return res.status(429).json({ error: 'Slow down a moment and try again.' })
+  }
+
+  const quota = checkQuota(ip)
+  if (!quota.allowed) {
+    return res.status(429).json({ error: quota.reason, budget: budgetFor(ip) })
   }
 
   const { text, tone, section, resolution, side } = body(req)
@@ -41,14 +50,17 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ error: 'Pick a valid tone.' })
   }
 
+  recordRequest(ip)
+
   try {
-    const raw = await complete({
+    const { text: raw, tokens } = await complete({
       system: rewriteSystem(),
       user: rewriteUser({ text, tone, section, resolution, side }),
       json: true,
       temperature: 0.7,
-      maxTokens: 900,
+      maxTokens: 700,
     })
+    recordTokens(ip, tokens)
 
     let parsed: any
     try {
@@ -57,22 +69,29 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'The coach returned an unreadable response. Try again.' })
     }
 
-    const raw_options = Array.isArray(parsed?.options)
-      ? parsed.options.filter((o: any) => typeof o === 'string' && o.trim()).slice(0, 3)
+    const candidates = Array.isArray(parsed?.options)
+      ? parsed.options
+          .filter((o: any) => typeof o === 'string' && o.trim())
+          .map((o: string) => clamp(o))
+          .slice(0, MAX_REWRITE_OPTIONS)
       : []
 
-    // A rewrite may polish wording, never add evidence the debater didn't write.
-    const options = raw_options.filter((o: string) => !addsUnsupportedEvidence(text, o))
+    // A rewrite may polish wording, never add evidence the debater didn't
+    // write, and never balloon into writing the case for them.
+    const options = candidates.filter(
+      (o: string) => !addsUnsupportedEvidence(text, o) && !overgrown(text, o),
+    )
 
     if (options.length === 0) {
       return res.status(502).json({
-        error: raw_options.length
-          ? 'The coach kept adding sources you did not write, so nothing was returned. Try rewriting a passage without unsourced statistics.'
+        error: candidates.length
+          ? 'The coach kept adding sources or going beyond your passage, so nothing was returned. Try a shorter passage without unsourced statistics.'
           : 'No rewrite came back. Try again.',
+        budget: budgetFor(ip),
       })
     }
 
-    return res.status(200).json({ options })
+    return res.status(200).json({ options, budget: budgetFor(ip) })
   } catch (err: any) {
     const msg = String(err?.message ?? '')
     const code = msg.startsWith('AI_PROVIDER_4') ? 502 : 503

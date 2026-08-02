@@ -48,6 +48,13 @@ export default function AboutDialog({ onClose }: { onClose: () => void }) {
             you read out loud.
           </p>
 
+          <h3>Limits</h3>
+          <p>
+            The coach has a daily budget per person, shown in the toolbar. If
+            you reach it, coaching pauses until tomorrow — the editor, your
+            cases, and exporting all keep working normally.
+          </p>
+
           <h3>Your data</h3>
           <ul>
             <li>

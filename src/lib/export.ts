@@ -1,4 +1,4 @@
-import type { CaseDoc } from './caseDoc'
+import { type CaseDoc, BLOCK_LABELS, migrateDoc } from './caseDoc'
 
 export function toMarkdown(doc: CaseDoc): string {
   const lines: string[] = []
@@ -33,21 +33,14 @@ export function toMarkdown(doc: CaseDoc): string {
       lines.push(`**Claim.** ${c.claim}`)
       lines.push('')
     }
-    if (c.warrant.trim()) {
-      lines.push(`**Warrant.** ${c.warrant}`)
-      lines.push('')
-    }
-    if (c.evidence.length) {
-      lines.push('**Evidence.**')
-      lines.push('')
-      for (const e of c.evidence) {
-        const cite = e.citation ? ` (${e.citation})` : ''
-        lines.push(`- ${e.text}${cite}`)
+    for (const b of c.blocks) {
+      if (!b.text.trim()) continue
+      if (b.type === 'evidence') {
+        const cite = b.citation ? ` (${b.citation})` : ''
+        lines.push(`> ${b.text}${cite}`)
+      } else {
+        lines.push(`**${BLOCK_LABELS[b.type]}.** ${b.text}`)
       }
-      lines.push('')
-    }
-    if (c.impact.trim()) {
-      lines.push(`**Impact.** ${c.impact}`)
       lines.push('')
     }
   })
@@ -80,11 +73,11 @@ export function toPlainText(doc: CaseDoc): string {
   doc.contentions.forEach((c, i) => {
     lines.push(`CONTENTION ${i + 1}${c.title ? `: ${c.title}` : ''}`)
     if (c.claim.trim()) lines.push(`  Claim: ${c.claim}`)
-    if (c.warrant.trim()) lines.push(`  Warrant: ${c.warrant}`)
-    for (const e of c.evidence) {
-      lines.push(`  Evidence: ${e.text}${e.citation ? ` (${e.citation})` : ''}`)
+    for (const b of c.blocks) {
+      if (!b.text.trim()) continue
+      const cite = b.type === 'evidence' && b.citation ? ` (${b.citation})` : ''
+      lines.push(`  ${BLOCK_LABELS[b.type]}: ${b.text}${cite}`)
     }
-    if (c.impact.trim()) lines.push(`  Impact: ${c.impact}`)
     lines.push('')
   })
 
@@ -112,7 +105,7 @@ export function parseBackupJson(raw: string): CaseDoc[] {
     (d: any) => d && typeof d.id === 'string' && Array.isArray(d.contentions),
   )
   if (!valid.length) throw new Error('No cases found in that file.')
-  return valid as CaseDoc[]
+  return (valid as any[]).map(migrateDoc)
 }
 
 export function download(filename: string, content: string, type = 'text/plain'): void {

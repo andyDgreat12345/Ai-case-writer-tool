@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { getFeedback, getRewrite, type Suggestion } from '../lib/api'
+import { getFeedback, getRewrite, type Suggestion, type Budget } from '../lib/api'
 import type { ToneId } from '../lib/tone'
 
 interface CoachProps {
@@ -11,6 +11,7 @@ interface CoachProps {
   resolution?: string
   side?: string
   onApply: (newText: string) => void
+  onBudget?: (b: Budget) => void
 }
 
 type State =
@@ -33,6 +34,7 @@ export default function Coach(props: CoachProps) {
     setState({ kind: 'loading' })
     try {
       const r = await getFeedback({ text: props.text, kind, ...ctx })
+      if (r.budget) props.onBudget?.(r.budget)
       setState({ kind: 'feedback', summary: r.summary, suggestions: r.suggestions })
     } catch (e: any) {
       setState({ kind: 'error', message: e?.message ?? 'Something went wrong.' })
@@ -43,6 +45,7 @@ export default function Coach(props: CoachProps) {
     setState({ kind: 'loading' })
     try {
       const r = await getRewrite({ text: props.text, tone: props.tone, ...ctx })
+      if (r.budget) props.onBudget?.(r.budget)
       setState({ kind: 'rewrite', options: r.options })
     } catch (e: any) {
       setState({ kind: 'error', message: e?.message ?? 'Something went wrong.' })

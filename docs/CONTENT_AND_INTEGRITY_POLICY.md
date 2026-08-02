@@ -58,11 +58,30 @@ improves the student's own work; it does not do the work for them.
 
 The AI costs money per call and the site is public.
 
-- **Per-IP rate limits** (start conservative, tune with data):
-  - Feedback/rewrite: ~10 / minute, ~100 / day per IP.
+- **Per-user caps**, enforced in `api/_lib/usage.ts` ("user" = client IP, since
+  the tool is login-free and there is no account to meter):
+  - **Burst:** ~10 requests / minute.
+  - **Daily requests:** `RATE_LIMIT_PER_DAY` (default 100 per person).
+  - **Daily tokens:** `TOKEN_BUDGET_PER_DAY` (default 60k per person), metered
+    from the usage the provider reports, with a length-based estimate as
+    fallback for providers that omit it.
+  - **Site-wide daily ceiling:** `SITE_TOKEN_BUDGET_PER_DAY`, so a single bad
+    day cannot drain the account.
+  - Remaining allowance is returned to the browser and shown in the toolbar, so
+    a user can see what's left rather than hitting a wall unexplained. When a
+    cap is reached the coach pauses and says so; **the editor keeps working**.
+  - *Honest limitation:* these counters are in-memory, so they reset when a
+    serverless instance recycles and are not shared across concurrent
+    instances. They are a cost **dampener**, not an airtight quota. The only
+    hard ceiling is the spend limit set on the provider account itself.
 - **Input caps:** reject any section over `MAX_INPUT_CHARS` before it hits the
   model.
-- **Output caps:** `maxTokens` per task.
+- **Output caps and scope limits** (`api/_lib/bounds.ts`): `maxTokens` per task,
+  at most 4 suggestions and 2 rewrite options, every field truncated at 400
+  characters, and — importantly — a **growth check**. A "rewrite" that has
+  ballooned far past the passage it was given has stopped editing the debater's
+  words and started writing the case for them, so it is discarded. This is a
+  scope rule as much as a cost rule.
 - **Spend alerts** on the provider account + a monthly hard budget; if exceeded,
   AI endpoints return a graceful "coach paused for the day" while the editor
   keeps working.

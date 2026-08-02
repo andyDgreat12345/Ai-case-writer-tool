@@ -1,5 +1,5 @@
 import type { CaseDoc } from '../lib/caseDoc'
-import { speakableText, wordCount, estimateSeconds, formatDuration } from '../lib/caseDoc'
+import { speakableText, wordCount, estimateSeconds, formatDuration, BLOCK_LABELS } from '../lib/caseDoc'
 
 // A clean, high-contrast reading view for printing or speaking from.
 export default function SpeechView({ doc, onClose }: { doc: CaseDoc; onClose: () => void }) {
@@ -64,21 +64,17 @@ export default function SpeechView({ doc, onClose }: { doc: CaseDoc; onClose: ()
                   <strong>Claim.</strong> {c.claim}
                 </p>
               )}
-              {c.warrant.trim() && (
-                <p>
-                  <strong>Warrant.</strong> {c.warrant}
-                </p>
-              )}
-              {c.evidence.map((e, j) => (
-                <p className="speech-ev" key={j}>
-                  {e.text}
-                  {e.citation && <em> ({e.citation})</em>}
-                </p>
-              ))}
-              {c.impact.trim() && (
-                <p>
-                  <strong>Impact.</strong> {c.impact}
-                </p>
+              {c.blocks.map((b) =>
+                !b.text.trim() ? null : b.type === 'evidence' ? (
+                  <p className="speech-ev" key={b.id}>
+                    {b.text}
+                    {b.citation && <em> ({b.citation})</em>}
+                  </p>
+                ) : (
+                  <p key={b.id}>
+                    <strong>{BLOCK_LABELS[b.type]}.</strong> {b.text}
+                  </p>
+                ),
               )}
             </section>
           ))}
