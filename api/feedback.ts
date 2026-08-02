@@ -9,6 +9,7 @@ import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence, addsFabricatedCitation } from './_lib/guard.js'
 import { clamp, overgrown, MAX_SUGGESTIONS } from './_lib/bounds.js'
 import { checkQuota, recordRequest, recordTokens, budgetFrom } from './_lib/usage.js'
+import { originAllowed } from './_lib/origin.js'
 
 const WITHHELD =
   'A suggested rewrite was withheld because it invented a source or figure you did not write. Find and verify that evidence yourself.'
@@ -31,6 +32,10 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!aiConfigured()) {
     return res.status(503).json({ error: 'The AI coach is not configured yet.' })
+  }
+
+  if (!originAllowed(req)) {
+    return res.status(403).json({ error: 'This coach only serves its own site.' })
   }
 
   const ip = clientIp(req)

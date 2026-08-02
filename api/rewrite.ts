@@ -9,6 +9,7 @@ import { parseLooseJson } from './_lib/json.js'
 import { addsUnsupportedEvidence } from './_lib/guard.js'
 import { clamp, overgrown, MAX_REWRITE_OPTIONS } from './_lib/bounds.js'
 import { checkQuota, recordRequest, recordTokens, budgetFrom } from './_lib/usage.js'
+import { originAllowed } from './_lib/origin.js'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -26,6 +27,10 @@ export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
   if (!aiConfigured()) {
     return res.status(503).json({ error: 'The AI coach is not configured yet.' })
+  }
+
+  if (!originAllowed(req)) {
+    return res.status(403).json({ error: 'This coach only serves its own site.' })
   }
 
   const ip = clientIp(req)
