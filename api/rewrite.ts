@@ -6,6 +6,7 @@ import { complete, aiConfigured } from './_lib/ai.js'
 import { allow, clientIp, perMinuteLimit, maxInputChars } from './_lib/ratelimit.js'
 import { rewriteSystem, rewriteUser, isToneId } from './_lib/prompts.js'
 import { parseLooseJson } from './_lib/json.js'
+import { addsUnsupportedEvidence } from './_lib/guard.js'
 
 function body(req: any): any {
   if (!req.body) return {}
@@ -56,12 +57,19 @@ export default async function handler(req: any, res: any) {
       return res.status(502).json({ error: 'The coach returned an unreadable response. Try again.' })
     }
 
-    const options = Array.isArray(parsed?.options)
+    const raw_options = Array.isArray(parsed?.options)
       ? parsed.options.filter((o: any) => typeof o === 'string' && o.trim()).slice(0, 3)
       : []
 
+    // A rewrite may polish wording, never add evidence the debater didn't write.
+    const options = raw_options.filter((o: string) => !addsUnsupportedEvidence(text, o))
+
     if (options.length === 0) {
-      return res.status(502).json({ error: 'No rewrite came back. Try again.' })
+      return res.status(502).json({
+        error: raw_options.length
+          ? 'The coach kept adding sources you did not write, so nothing was returned. Try rewriting a passage without unsourced statistics.'
+          : 'No rewrite came back. Try again.',
+      })
     }
 
     return res.status(200).json({ options })

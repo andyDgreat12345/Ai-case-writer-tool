@@ -93,6 +93,7 @@ export default function Coach(props: CoachProps) {
               </div>
               {s.span && <div className="sugg-span">“{s.span}”</div>}
               <div className="sugg-fix">{s.suggestion}</div>
+              {s.note && <div className="sugg-note">⚠ {s.note}</div>}
               {s.rewrite && (
                 <div className="sugg-rewrite">
                   <span>{s.rewrite}</span>
